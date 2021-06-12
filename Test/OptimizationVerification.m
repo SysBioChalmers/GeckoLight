@@ -2,9 +2,10 @@
 %GetEnzymeCodes
 %%%%%%%%%%%%%%%%%%
 
-cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStrategy/GeckoWork
+speciesAdapter = HumanGEMAdapter();
+
 tic
-model_data = getEnzymeCodesOpt(model);
+model_data = getEnzymeCodesOpt(model, speciesAdapter);
 toc %Elapsed time is 38.600622 seconds, I think this could be acceptable.
 
 %check that the result is the same
@@ -194,15 +195,24 @@ MWDivKcats_orig(85)
 
 %compare the resulting models before and after optimization (S matrix only)
 cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStrategy
-load('data/ltModel.mat');
-load('data/prepMinModelLite.mat');
-cd GeckoWork
+load('data/ltModel.mat'); %this is expected to be an old one
 
-sel = ~contains(ltModel.rxns, prepMinModelLite.rxns);
+ltModelNew = CreateECLightModel(ihuman);
+ltModelNew = curateModel(ltModelNew);
+ltModelNew.lb(ltModelNew.lb == -1000) = -Inf; %These operations help the solver, it runs faster with inf
+ltModelNew.ub(ltModelNew.ub == 1000) = Inf;
+
+bloodData = prepBloodData(false, true);
+ltModelNewMin = minimizeModel(ltModelNew, bloodData);
+ltModelNewPrep = setGrowthMedium(ltModelNewMin, true, 'Hams');
+
+
+sel = ~contains(ltModel.rxns, ltModelNewPrep.rxns);
 ltModel.rxns(sel)
 
-compareVectorsNum(ltModelOrig.S, ecModelOrigLite.S, 'S') %ok
-compareVectorsNum(ltModel.S, prepMinModelLite.S, 'S') %strange that these are slightly different (a few exchange reactions it seems)
+compareVectorsNum(ltModelNewPrep.S, ltModel.S, 'S') 
+
+%compareVectorsNum(ltModel.S, prepMinModelLite.S, 'S') %strange that these are slightly different (a few exchange reactions it seems)
 %so, it seems that minimize model did something different. It does not
 %matter much I'd say, so let's ignore it for now.
 

@@ -1,3 +1,4 @@
+%This code origins from Gecko, but has been optimized for speed (~20 times faster)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % model_data = getEnzymeCodes(model,action)
 % Retrieves the enzyme codes for each of the reactions for a given genome
@@ -28,9 +29,9 @@
 % Ivan Domenzain.   Last edited: 2018-09-07
 % Johan Gustafsson  Last edited: 2021-06-07
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function model_data = getEnzymeCodes(model,action)
+function model_data = getEnzymeCodesOpt(model,speciesAdapter, action)
 
-if nargin<2
+if nargin<3
     action = 'display';
 end
 
@@ -40,7 +41,7 @@ fprintf('Retrieving EC numbers...')
 [grRules,~]   = standardizeGrRules(model,true);
 model.grRules = grRules;
 
-data      = load(strcat(GeckoInstall.getGeckoPath(),'/Databases/ProtDatabase.mat'));
+data      = load(speciesAdapter.getFilePath('ProtDatabase.mat'));
 swissprot = data.swissprot;
 kegg      = data.kegg;
 
@@ -48,12 +49,12 @@ swissprot = standardizeDatabase(swissprot);
 kegg      = standardizeDatabase(kegg);
 
 DBprotSwissprot     = swissprot(:,1);
-DBgenesSwissprot    = flattenCell(swissprot(:,3));
+DBgenesSwissprot    = flattenCellLt(swissprot(:,3));
 DBecNumSwissprot    = swissprot(:,4);
 DBMWSwissprot       = swissprot(:,5);
 
 DBprotKEGG          = kegg(:,1);
-DBgenesKEGG         = flattenCell(kegg(:,3));
+DBgenesKEGG         = flattenCellLt(kegg(:,3));
 DBecNumKEGG         = kegg(:,4);
 DBMWKEGG            = kegg(:,5);
 
@@ -133,7 +134,7 @@ for i = 1:n
             end
         else
             %Find match in KEGG (skipped optimizing this step):
-            [new_uni,new_EC,new_MW,newGene,multGenes] = findInDB(model.grRules{i},DBprotKEGG,DBgenesKEGG,DBecNumKEGG,DBMWKEGG);
+            [new_uni,new_EC,new_MW,newGene,multGenes] = findInDBLegacy(model.grRules{i},DBprotKEGG,DBgenesKEGG,DBecNumKEGG,DBMWKEGG);
             if ~isempty(union_string(new_EC))
                 count(2) = count(2) + isrev(i);
                 DBase    = 'kegg';

@@ -74,4 +74,7 @@ for i = 1:length(MWDivKcatsRes)
     end
 
 end
+
+fprintf(' Done!\n')
+
 end

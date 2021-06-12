@@ -1,5 +1,7 @@
+%This code origins from Gecko, but has been adapted with the species adapter 
+%and has been optimized for speed (~50 times faster)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- % kcats = matchKcats(model_data,org_name)
+ % kcats = matchKcats(model_data,org_name, speciesAdapter)
  % Matchs the model EC numbers and substrates to the BRENDA database, to
  % return the corresponding kcats for each reaction.
  %
@@ -48,7 +50,7 @@
  % Benjamin J. Sanchez. Last edited: 2016-03-01
  % Ivan Domenzain.      Last edited: 2018-01-16
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- function kcats = matchKcats(model_data, org_name, KCATcell, SAcell, phylpath)
+ function kcats = matchKcatsOpt(model_data, org_name, KCATcell, SAcell, speciesAdapter)
  
  fprintf('Matching kcats...')
  
@@ -57,7 +59,7 @@
  
  %Creates a Structure with KEGG codes for organisms, names and taxonomical
  %distance matrix and extract the organism index in the KEGG struct
- phylDistStruct =  KEGG_struct(phylpath);
+ phylDistStruct =  KEGG_struct(speciesAdapter.getFilePath('PhylDist.mat'));
  %Get the KEGG code for the model's organism
  org_index      = find_inKEGG(org_name,phylDistStruct.names);
  %Extract relevant info from model_data:
@@ -490,9 +492,7 @@ fprintf(' Done!\n')
      end
  end
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- function phylDistStruct =  KEGG_struct(phylpath)
-     
-     %load('../../databases/PhylDist.mat')
+ function phylDistStruct =  KEGG_struct(phylpath)     
      load(phylpath)
      phylDistStruct.ids   = transpose(phylDistStruct.ids);
      phylDistStruct.names = transpose(phylDistStruct.names);

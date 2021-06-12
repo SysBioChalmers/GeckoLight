@@ -1,51 +1,43 @@
-function ecLightModel = CreateECLightModel(model, fillInMissingGPRs)
+function ecLightModel = CreateECLightModel(model, fillInMissingGPRs, speciesAdapter)
  
-%There are three major points with this function:
+%There are four major points with this function:
 %1. reduce the size of the ec model, since that is a huge problem when you
 %try to simulate several cell types together - it is just too slow.
 %2. There are a lot of missing GPRs for reactions - here we fill in a
 %standard cost for such reactions.
 %3. It is much faster - 1-2 minutes instead of hours.
+%4. The standard ec model gives the solver some numerical problems - it 
+%sometimes fails to solve the FBA. The light model seems to work fine.
 
-%much of this code is copied from various parts of Gecko, such as the
-%function enhanceGEM
+%much of this code is copied from various parts of Gecko and ecModels, 
+%such as the function enhanceGEM
 
-%the function currently requires a specialized version of Gecko, where
-%Gecko is first cloned, and the files in the repo SysBioChalmers/ecModels,
-%folder ecHumanGEM/scripts, are used to replace some files in Gecko.
+if nargin < 3
+	speciesAdapter = HumanGEMAdapter();
+end
+if nargin < 2
+	fillInMissingGPRs = true;
+end
 
-%There are a lot of CD:ing etc below - this should be fixed later when we
-%know where to put the code
-
-%You have to add Gecko to the path for this to work:
-%cd C:\Work\MatlabCode\components\Gecko\GeckoForHuman20210603\GECKO
-%GeckoInstall.install() 
-
-
-
-cd C:/Work/MatlabCode/components/Gecko/GeckoForHuman20210603/GECKO/geckomat
 
 %Get model-specific parameters
-parameters = getModelParameters;
+parameters = speciesAdapter.getParameters();
 
 %Remove blocked rxns + correct model.rev:
-cd change_model
-[model,name,modelVer] = preprocessModel(model,'ecLite','1');
+[model,name,modelVer] = preprocessModelLt(model,'ecLight','1');
 
 fprintf('\n==================')
-fprintf('\nGenerating ecModel:')
+fprintf('\nGenerating light ecModel:')
 fprintf('\n==================\n')
 
-cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStrategy/GeckoWork
-model_data = getEnzymeCodesOpt(model); %Elapsed time is 38.600622 seconds, I think this could be acceptable.
+model_data = getEnzymeCodesOpt(model, speciesAdapter); %Elapsed time is 38.600622 seconds, I think this could be acceptable.
+fprintf('\n')
 
-cd C:\Work\MatlabCode\components\Gecko\GeckoForHuman20210603\GECKO/geckomat/get_enzyme_data
+
 %Load BRENDA data:
-[KCATcell, SAcell] = loadBRENDAdata;
-cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStrategy/GeckoWork
-tic
-kcats      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, 'C:/Work/MatlabCode/components/Gecko/GeckoForHuman20210603/GECKO/Databases/PhylDist.mat');
-toc
+[KCATcell, SAcell] = loadBRENDAdataLt(speciesAdapter);
+kcats      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, speciesAdapter);
+fprintf('\n')
 %code here copied from readKcatData
 
 %Get kcat value for both directions:
@@ -63,23 +55,18 @@ matchedGenes = [model_data.matchedGenes; model_data.matchedGenes(rev,:)];
 %Convert to irreversible model with RAVEN function (will split in 2 any reversible rxn):
 model = convertToIrrev(model_data.model);
 
-%Convert original model to enzyme model according to uniprots and kcats.
-%eModel = convertToEnzymeModel(model,matchedGenes,uniprots,kcats);
 
-%So, we should modify this function. What we want to find for each reaction
+%What we want to find for each reaction
 %is the min value of MW/kcat when comparing all parallel reactions (i.e. OR in the GR rules)
 %The plan is then to add one reaction with prot_pool_exchange, one
 %metabolite called prot_pool, and a stochiometric coefficient of MW/kcat of
-%that for each reaction.
+%that for each reaction. For complexes, the MW are summed up, since the kcat is the same.
 
 %Load databases:
-cd C:/Work/MatlabCode/components/Gecko/GeckoForHuman20210603/GECKO/geckomat/get_enzyme_data
-data      = load('../../databases/ProtDatabase.mat');
+data      = load(speciesAdapter.getFilePath('ProtDatabase.mat')); %this is loaded twice, (also in a function above), a bit unnecessary
 swissprot = data.swissprot;
 
 standardMW = median([swissprot{:,5}])/1000;%the median of all the proteins
-%length(swissprot(:,1)) == length(unique(swissprot(:,1)))%ok
-cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStrategy/GeckoWork
 
 %profile on -history
 %profile off
@@ -90,7 +77,10 @@ cd C:/Work/MatlabCode/projects/HMASandbox/HMA_Sandbox/Johan/OptimalTMEGrowthStra
 %fnks{54}
 %srt(54)
 
+fprintf('Creating Gecko light model')
+
 MWDivKcats = GetMWAndKcats(uniprots,kcats, swissprot, standardMW);
+fprintf('\n');
 
 %so, what we do now is to add the reaction prot_pool_exchange and the metabolite prot_pool
 rxnsToAdd = struct();
@@ -112,51 +102,33 @@ model.S(length(model.mets),:) = -metRow;
 model = addRxns(model, rxnsToAdd, 3);
 
 %set the protein pool constraint
-model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.05900217;
+model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.05900217; %This was estimated in the TME modeling project.
+
+
 
 if fillInMissingGPRs
-
     %Now comes the task of filling in a standard protein cost for reactions
     %with missing GPRs
     standardRxnProtCost = median(MWDivKcats(~isnan(MWDivKcats)));%1.2894e-04
     MWDivKcatsFilledIn = [MWDivKcats;1]; %add prot_pool_exchange
 
     %get info about spontanoeus rxns
-    rxns_tsv = importTsvFile('C:/Work/MatlabCode/components/human-GEM/Human-GEM/model/reactions.tsv');
-    spont = rxns_tsv.spontaneous;
-    spontRxnNames = rxns_tsv.rxns;
+    [spont,spontRxnNames] = speciesAdapter.getSpontaneousReactions(model);
 
-    %codeDir = fileparts(which(mfilename));
-
-    %size(rxns_tsv)%13083          15
 
     [~,exchangeRxnsIndexes] = getExchangeRxns(model);
 
     numToFix = 0;
     protPoolIndex = find(strcmp(model.mets, 'prot_pool'));
 
-    for i = 1:(length(MWDivKcats)-1)%this length does not include
+    for i = 1:(length(MWDivKcats)-1)%avoid the protein_pool_exchange
        if isnan(MWDivKcats(i))%only look at reactions without protein cost
            %Step 1: Skip exchange reactions
            if ismember (i,exchangeRxnsIndexes)
                %disp(strcat(num2str(i),': skipping exchange: ', model.rxns(i), ': ', constructEquations(model, model.rxns(i))));
                continue;
            end
-           %Step 2: check if this is a spontaneous reaction
-           rxnName = model.rxns{i};
-           if endsWith(rxnName, '_REV')
-              rxnName = extractBefore(rxnName, strlength(rxnName)-3);
-           end
-           spontaneous = spont(strcmp(spontRxnNames, rxnName));
-           if ~isempty(spontaneous)%it shouldn't be
-               if ~isnan(spontaneous)%we treat NaN as that it is unknown if the reaction is spontaneous, which is seen as a no
-                   if spontaneous
-                      %disp(strcat(num2str(i),': skipping spontaneous: ', model.rxns(i), ': ', constructEquations(model, model.rxns(i))));
-                      continue; %leave spontaneous reactions without protein cost
-                   end
-               end
-           end
-           %Step 3: Skip transport reactions (with missing GPRs)
+           %Step 2: Skip transport reactions (with missing GPRs)
            %We really only skip the reactions with two metabolites
            %where they are the same but different compartments
            numMets = sum(model.S(:,i) ~= 0);
@@ -170,13 +142,30 @@ if fillInMissingGPRs
                   end
               end
            end
+           %Step 3: check if this is a spontaneous reaction (last because it is a bit heavier than the other checks)
+           rxnName = model.rxns{i};
+           if endsWith(rxnName, '_REV')
+              rxnName = extractBefore(rxnName, strlength(rxnName)-3);
+           end
+           spontaneous = spont(strcmp(spontRxnNames, rxnName)); %could potentially be optimized
+           if ~isempty(spontaneous)%it shouldn't be
+               if ~isnan(spontaneous)%we treat NaN as that it is unknown if the reaction is spontaneous, which is seen as a no
+                   if spontaneous
+                      %disp(strcat(num2str(i),': skipping spontaneous: ', model.rxns(i), ': ', constructEquations(model, model.rxns(i))));
+                      continue; %leave spontaneous reactions without protein cost
+                   end
+               end
+           end
            numToFix = numToFix + 1;
            %disp(strcat(num2str(i),': Assigning std val: ', model.rxns(i), ': ', constructEquations(model, model.rxns(i))));
            %fill in a standard value
            model.S(protPoolIndex, i) = -standardRxnProtCost;
        end
     end
+    
+    disp(['Filled in ' num2str(numToFix) ' protein usage costs with a standard value due to missing GPRs.'])
 end
+
 
 ecLightModel = model;
 
