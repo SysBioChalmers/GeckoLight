@@ -9,13 +9,13 @@ classdef GeckoLightInstall
     methods (Static)
         function install
             sourceDir = fileparts(which(mfilename));
-            paths = GeckoInstall.GetFilteredSubPaths(sourceDir, '.*\.git.*');
+            paths = GeckoLightInstall.GetFilteredSubPaths(sourceDir, '.*\.git.*');
             addpath(paths);
             savepath;
         end
         function uninstall
             sourceDir = fileparts(which(mfilename));
-            paths = GeckoInstall.GetFilteredSubPaths(sourceDir, '.*\.git.*');
+            paths = GeckoLightInstall.GetFilteredSubPaths(sourceDir, '.*\.git.*');
             rmpath(paths);
             savepath;
         end
