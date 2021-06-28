@@ -36,15 +36,16 @@ fprintf('\n')
 
 %Load BRENDA data:
 [KCATcell, SAcell] = loadBRENDAdataLt(speciesAdapter);
-kcats      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, speciesAdapter);
+kcatsRes      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, speciesAdapter);
 fprintf('\n')
 %code here copied from readKcatData
 
 %Get kcat value for both directions:
-Fkcat = kcats.forw.kcats;
-Bkcat = kcats.back.kcats;
+Fkcat = kcatsRes.forw.kcats;
+Bkcat = kcatsRes.back.kcats;
 rev   = logical(model_data.model.rev);
 kcats = [Fkcat;Bkcat(rev,:)];
+wcLevels = [kcatsRes.forw.wcLevel;kcatsRes.back.wcLevel(rev,:)];
 
 %Update uniprots with both directions:
 uniprots = [model_data.uniprots; model_data.uniprots(rev,:)];
@@ -79,7 +80,7 @@ standardMW = median([swissprot{:,5}])/1000;%the median of all the proteins
 
 fprintf('Creating Gecko light model')
 
-MWDivKcats = GetMWAndKcats(uniprots,kcats, swissprot, standardMW);
+[MWDivKcats,rxnWcLevels] = GetMWAndKcats(uniprots,kcats,wcLevels, swissprot, standardMW);
 fprintf('\n');
 
 %so, what we do now is to add the reaction prot_pool_exchange and the metabolite prot_pool
@@ -102,15 +103,42 @@ model.S(length(model.mets),:) = -metRow;
 model = addRxns(model, rxnsToAdd, 3);
 
 %set the protein pool constraint
-model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.05900217; %This was estimated in the TME modeling project.
+model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.02067172;%old before fix of wildcard matches: 0.05900217; %This was estimated in the TME modeling project.
+
+standardRxnProtCost = median(MWDivKcats(~isnan(MWDivKcats)));%1.2894e-04
 
 
+%The enzymes based on wildcard matches are uncertain - so make sure the
+%protein cost is not unrealistically high - a single such value could dominate a whole
+%simulation.
+%The strategy is to assume that none of those reactions should have a
+%protein cost higher than that of complex I. Replace all of those with a
+%standard protein cost
+
+%look at the complexes in oxphos:
+%MWDivKcats(strcmp(model.rxns,'HMR_6921')) %complex I: 0.1054
+%MWDivKcats(strcmp(model.rxns,'HMR_6918')) %complex III: 0.0011
+%MWDivKcats(strcmp(model.rxns,'HMR_6914')) %complex IV: 0.0264
+%MWDivKcats(strcmp(model.rxns,'HMR_6916')) %complex V: 7.0032e-04
+
+%we assume that none of the reactions based on a wildcard should have a
+%higher protein cost than human complex I - use a value of 0.1 as max
+%realistic protein cost - if above that it means that it is totally
+%unrealiable - we therefore take a standard value (and do not assign 0.1)
+%sel = MWDivKcats > 0.1 & rxnWcLevels > 0;
+%model.rxns(sel)
+%constructEquations(model, model.rxns(sel))
+%if (sum(sel > 0))
+%    model.S(length(model.mets),[sel;false]) = -standardRxnProtCost;
+%end
+
+%So, this step was replaced by a change in matchKcatsOpt, where all kcats
+%smaller than 1 s^-1 (3600 h^-1) are set to 1 s^-1. It works better with
+%the stoichiometry.
 
 if fillInMissingGPRs
     %Now comes the task of filling in a standard protein cost for reactions
     %with missing GPRs
-    standardRxnProtCost = median(MWDivKcats(~isnan(MWDivKcats)));%1.2894e-04
-    MWDivKcatsFilledIn = [MWDivKcats;1]; %add prot_pool_exchange
 
     %get info about spontanoeus rxns
     [spont,spontRxnNames] = speciesAdapter.getSpontaneousReactions(model);

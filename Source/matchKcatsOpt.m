@@ -1,5 +1,5 @@
 %This code origins from Gecko, but has been adapted with the species adapter 
-%and has been optimized for speed (~50 times faster)
+%and has been optimized for speed (~50 times faster) /Johan G
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  % kcats = matchKcats(model_data,org_name, speciesAdapter)
  % Matchs the model EC numbers and substrates to the BRENDA database, to
@@ -79,6 +79,7 @@
  forw.rest_ns = zeros(mM,nM);
  forw.org_sa  = zeros(mM,nM);
  forw.rest_sa = zeros(mM,nM);
+ forw.wcLevel = NaN(mM,nM);
  back.kcats   = zeros(mM,nM);
  back.org_s   = zeros(mM,nM);
  back.rest_s  = zeros(mM,nM);
@@ -86,6 +87,7 @@
  back.rest_ns = zeros(mM,nM);
  back.org_sa  = zeros(mM,nM);
  back.rest_sa = zeros(mM,nM);
+ back.wcLevel = NaN(mM,nM);
  tot.queries  = 0;
  tot.org_s    = 0;
  tot.rest_s   = 0;
@@ -112,6 +114,9 @@
  
  %Main loop: 
   for i = 1:mM
+      %if strcmp(model_data.model.rxns{i},'HMR_4158')
+      %    disp('set breakpoint here')
+      %end
      %Match:
      for j = 1:nM
          EC = EC_numbers{i,j};
@@ -197,6 +202,7 @@ fprintf(' Done!\n')
      dir.org_sa(i,j)  = matches*(origin == 4);
      dir.rest_ns(i,j) = matches*(origin == 5);    
      dir.rest_sa(i,j) = matches*(origin == 6);
+     dir.wcLevel(i,j) = wc_num;
      tot.org_s        = tot.org_s   + (origin == 1);
      tot.rest_s       = tot.rest_s  + (origin == 2);
      tot.org_ns       = tot.org_ns  + (origin == 3);
@@ -300,6 +306,12 @@ fprintf(' Done!\n')
      kcat       = SAcell{3}(EC_indexes);
      org_cell   = SAcell{2}(EC_indexes);
      MW_BRENDA  = SAcell{4}(EC_indexes);
+     
+     %to handle bad kcat values that totally dominate the modeling, we do
+     %not accept a lower kcat than 1 s^-1, i.e. 3600 h^-1
+     %need to handle this in several places, since it is sometimes modified
+     %for stoichiometry
+     kcat(kcat < 3600) = 3600;
  else
      %KCATcell{1},wild,ECIndexIds,EcIndexIndices
      EC_indexes = extract_indexes(KCATcellMatches,KCATcell{2},KCATcell{3},...
@@ -317,13 +329,23 @@ fprintf(' Done!\n')
                  if ~isempty(subs{k}) && strcmpi(subs{k},KCATcell{2}(indx))
                      if KCATcell{4}(indx) > 0 
                          coeff = min(abs(model.S(l,i)));
-                         kcat  = [kcat;KCATcell{4}(indx)/coeff];
+                         kCatTmp = KCATcell{4}(indx);
+                         %to handle bad kcat values that totally dominate the modeling, we do
+                         %not accept a lower kcat than 1 s^-1, i.e. 3600 h^-1
+                         %need to handle this in several places, since it is sometimes modified
+                         %for stoichiometry
+                         if kCatTmp < 3600
+                             kCatTmp = 3600;
+                         end
+                         
+                         kcat  = [kcat;kCatTmp/coeff];
                      end
                  end
              end
          end
      else
          kcat = KCATcell{4}(EC_indexes);
+         kcat(kcat < 3600) = 3600;
      end
  end                         
  %Return maximum value:

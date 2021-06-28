@@ -210,7 +210,7 @@ ltModelNewPrep = setGrowthMedium(ltModelNewMin, true, 'Hams');
 sel = ~contains(ltModel.rxns, ltModelNewPrep.rxns);
 ltModel.rxns(sel)
 
-compareVectorsNum(ltModelNewPrep.S, ltModel.S, 'S') 
+compareVectorsNum(ltModelNewPrep.S, ltModel.S, 'S') %they usually differ on a few reactions, I don't think it matters much, probably some randomness there
 
 %compareVectorsNum(ltModel.S, prepMinModelLite.S, 'S') %strange that these are slightly different (a few exchange reactions it seems)
 %so, it seems that minimize model did something different. It does not
