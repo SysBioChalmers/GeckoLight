@@ -50,7 +50,14 @@
  % Benjamin J. Sanchez. Last edited: 2016-03-01
  % Ivan Domenzain.      Last edited: 2018-01-16
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- function kcats = matchKcatsOpt(model_data, org_name, KCATcell, SAcell, speciesAdapter)
+ function kcats = matchKcatsOpt(model_data, org_name, KCATcell, SAcell, speciesAdapter, minAcceptableKCat)
+ 
+ if nargin < 6
+     minAcceptableKCat = 0;
+ end
+ 
+ minAcceptableKCat = minAcceptableKCat * 3600;%convert to per hour
+
  
  fprintf('Matching kcats...')
  
@@ -62,6 +69,24 @@
  phylDistStruct =  KEGG_struct(speciesAdapter.getFilePath('PhylDist.mat'));
  %Get the KEGG code for the model's organism
  org_index      = find_inKEGG(org_name,phylDistStruct.names);
+  %build an index for genus in the phyl dist struct
+ %first just extract the genus (i.e. the first part of the name)
+ phylDistStruct.genus = cell(length(phylDistStruct.names),1);
+ for i = 1:length(phylDistStruct.genus)
+    name = phylDistStruct.names{i};
+    phylDistStruct.genus{i} = lower(name(1:(strfind(name,' ')-1))); %convert all to lower case to avoid problems with case
+ end
+ %create a map for the genuses
+ phylDistStruct.uniqueGenusList = unique(phylDistStruct.genus);
+ phylDistStruct.genusHashMap = containers.Map(phylDistStruct.uniqueGenusList,1:length(phylDistStruct.uniqueGenusList));
+ phylDistStruct.uniqueGenusIndices = cell(length(phylDistStruct.uniqueGenusList),1);
+ 
+ %Then for each genus create a list with indices to the names
+ for i = 1:length(phylDistStruct.genus)
+     matchInd = cell2mat(values(phylDistStruct.genusHashMap,phylDistStruct.genus(i)));
+     phylDistStruct.uniqueGenusIndices{matchInd} = [phylDistStruct.uniqueGenusIndices{matchInd};i];
+ end
+
  %Extract relevant info from model_data:
  substrates = model_data.substrates;
  substrateIndices = model_data.substrateIndices;
@@ -129,13 +154,13 @@
          if ~isempty(substrates{i,1})
               [forw,tot] = iterativeMatch(EC,MW,substrates(i,:),i,j,KCATcell,...
                                           forw,tot,model,org_name,...
-                                          phylDistStruct,org_index,SAcell,ECIndexIds,EcIndexIndices, substrateIndices(i,:));
+                                          phylDistStruct,org_index,SAcell,ECIndexIds,EcIndexIndices, substrateIndices(i,:), minAcceptableKCat);
          end
          %Repeat for inverse reaction:
          if ~isempty(products{i,1})
              [back,tot] = iterativeMatch(EC,MW,products(i,:),i,j,KCATcell,...
                                          back,tot,model,org_name,...
-                                         phylDistStruct,org_index,SAcell,ECIndexIds,EcIndexIndices, productIndices(i,:));
+                                         phylDistStruct,org_index,SAcell,ECIndexIds,EcIndexIndices, productIndices(i,:), minAcceptableKCat);
          end
      end
      %Display progress:
@@ -153,7 +178,7 @@ fprintf(' Done!\n')
  end
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  function [dir,tot] =iterativeMatch(EC,MW,subs,i,j,KCATcell,dir,tot,model,...
-                                    name,phylDist,org_index,SAcell,ECIndexIds,EcIndexIndices, subsIndices)
+                                    name,phylDist,org_index,SAcell,ECIndexIds,EcIndexIndices, subsIndices, minAcceptableKCat)
  %Will iteratively try to match the EC number to some registry in BRENDA,
  %using each time one additional wildcard.
  
@@ -167,7 +192,7 @@ fprintf(' Done!\n')
          %Atempt match:
          [kcat(k),origin(k),matches(k)] = mainMatch(EC{k},MW,subs,KCATcell,...
                                                     model,i,name,phylDist,...
-                                                    org_index,SAcell,ECIndexIds,EcIndexIndices,subsIndices);
+                                                    org_index,SAcell,ECIndexIds,EcIndexIndices,subsIndices, minAcceptableKCat);
          %If any match found, ends. If not, introduces one extra wild card and
          %tries again:
          if origin(k) > 0
@@ -222,7 +247,7 @@ fprintf(' Done!\n')
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  
  function [kcat,origin,matches] = mainMatch(EC,MW,subs,KCATcell,model,i,...
-                                      name,phylDist,org_index,SAcell,ECIndexIds,EcIndexIndices,subsIndices)
+                                      name,phylDist,org_index,SAcell,ECIndexIds,EcIndexIndices,subsIndices, minAcceptableKCat)
                                                                    
  %First make the string matching. This takes time, so we only want to do
  %this once:
@@ -241,19 +266,19 @@ fprintf(' Done!\n')
  origin = 0;
  %First try to match organism and substrate:
  [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,name,true,false,model,i,...
-                            phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices);                      
+                            phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices, minAcceptableKCat);                      
  if matches > 0
      origin = 1;
  %If no match, try the closest organism but match the substrate:
  else   
     [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,'',true,false,model,i,...
-                               phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices);
+                               phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices, minAcceptableKCat);
      if matches > 0
          origin = 2;
      %If no match, try to match organism but with any substrate:
      else
          [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,name,false,false,...
-                                    model,i,phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices);
+                                    model,i,phylDist,org_index,SAcell,stringMatchesEC_cell,[],subsIndices, minAcceptableKCat);
          if matches > 0
              origin = 3;
          %If no match, try to match organism but for any substrate (SA*MW):
@@ -263,21 +288,21 @@ fprintf(' Done!\n')
              
               [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,name,false,...
                                          true,model,i,phylDist,org_index,...
-                                         SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices);
+                                         SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices, minAcceptableKCat);
               if matches > 0
                   origin = 4; 
              %If no match, try any organism and any substrate:
               else
                  [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,'',false,...
                                             false,model,i,phylDist,...
-                                            org_index,SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices);
+                                            org_index,SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices, minAcceptableKCat);
                  if matches > 0
                      origin = 5;
                  %Again if no match, look for any org and SA*MW    
                   else
                       [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,'',...
                                                  false,true,model,i,phylDist,...
-                                                 org_index,SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices);
+                                                 org_index,SAcell,stringMatchesEC_cell,stringMatchesSA,subsIndices, minAcceptableKCat);
                       if matches > 0
                           origin = 6;
                       end
@@ -291,7 +316,7 @@ fprintf(' Done!\n')
  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  function [kcat,matches] = matchKcat(EC,MW,subs,KCATcell,organism,...
                                      substrate,SA,model,i,phylDist,...
-                                     org_index,SAcell,KCATcellMatches,SAcellMatches,subsIndices)
+                                     org_index,SAcell,KCATcellMatches,SAcellMatches,subsIndices, minAcceptableKCat)
                   
  %Will go through BRENDA and will record any match. Afterwards, it will
  %return the average value and the number of matches attained.
@@ -311,7 +336,7 @@ fprintf(' Done!\n')
      %not accept a lower kcat than 1 s^-1, i.e. 3600 h^-1
      %need to handle this in several places, since it is sometimes modified
      %for stoichiometry
-     kcat(kcat < 3600) = 3600;
+     kcat(kcat < minAcceptableKCat) = minAcceptableKCat;
  else
      %KCATcell{1},wild,ECIndexIds,EcIndexIndices
      EC_indexes = extract_indexes(KCATcellMatches,KCATcell{2},KCATcell{3},...
@@ -334,8 +359,8 @@ fprintf(' Done!\n')
                          %not accept a lower kcat than 1 s^-1, i.e. 3600 h^-1
                          %need to handle this in several places, since it is sometimes modified
                          %for stoichiometry
-                         if kCatTmp < 3600
-                             kCatTmp = 3600;
+                         if kCatTmp < minAcceptableKCat
+                             kCatTmp = minAcceptableKCat;
                          end
                          
                          kcat  = [kcat;kCatTmp/coeff];
@@ -345,7 +370,7 @@ fprintf(' Done!\n')
          end
      else
          kcat = KCATcell{4}(EC_indexes);
-         kcat(kcat < 3600) = 3600;
+         kcat(kcat < minAcceptableKCat) = minAcceptableKCat;
      end
  end                         
  %Return maximum value:
@@ -473,17 +498,17 @@ fprintf(' Done!\n')
              temp         = [temp;EC_indexes(j)];
          %For values related to organisms without KEGG code, then it will
          %look for KEGG code for the first organism with the same genus
-         else %This is never entered for human, so no problems there
-             k=1;
-             while isempty(orgs_index) && k<length(phylDist.names)
-                 str = phylDist.names{k};
-                 org = orgs_cell{EC_indexes(j)};
-                 if strcmpi(org(1:strfind(org,' ')-1),str(1:strfind(str,' ')-1))
-                     orgs_index   = k; 
-                     KEGG_indexes = [KEGG_indexes;k];
-                     temp         = [temp;EC_indexes(j)];
-                 end
-                 k = k+1;
+         else 
+             org = orgs_cell{EC_indexes(j)};
+             orgGenus = lower(org(1:(strfind(org,' ')-1)));
+             if isKey(phylDist.genusHashMap,orgGenus) %annoyingly, this seems to be needed
+                 matchInd = cell2mat(values(phylDist.genusHashMap,{orgGenus}));
+                 matches = phylDist.uniqueGenusIndices{matchInd};
+                 k = matches(1);
+                 k2 = k;%tmp, remove later
+                 orgs_index   = k; 
+                 KEGG_indexes = [KEGG_indexes;k];
+                 temp         = [temp;EC_indexes(j)];
              end
          end
      end

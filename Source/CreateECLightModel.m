@@ -1,4 +1,4 @@
-function ecLightModel = CreateECLightModel(model, fillInMissingGPRs, speciesAdapter)
+function ecLightModel = CreateECLightModel(model, fillInMissingGPRs, minAcceptableKCat, speciesAdapter)
  
 %There are four major points with this function:
 %1. reduce the size of the ec model, since that is a huge problem when you
@@ -12,8 +12,11 @@ function ecLightModel = CreateECLightModel(model, fillInMissingGPRs, speciesAdap
 %much of this code is copied from various parts of Gecko and ecModels, 
 %such as the function enhanceGEM
 
-if nargin < 3
+if nargin < 4
 	speciesAdapter = HumanGEMAdapter();
+end
+if nargin < 3
+	minAcceptableKCat = 0;
 end
 if nargin < 2
 	fillInMissingGPRs = true;
@@ -36,7 +39,7 @@ fprintf('\n')
 
 %Load BRENDA data:
 [KCATcell, SAcell] = loadBRENDAdataLt(speciesAdapter);
-kcatsRes      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, speciesAdapter);
+kcatsRes      = matchKcatsOpt(model_data,parameters.org_name, KCATcell, SAcell, speciesAdapter, minAcceptableKCat);
 fprintf('\n')
 %code here copied from readKcatData
 
