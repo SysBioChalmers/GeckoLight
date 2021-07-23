@@ -106,7 +106,7 @@ model.S(length(model.mets),:) = -metRow;
 model = addRxns(model, rxnsToAdd, 3);
 
 %set the protein pool constraint
-model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.02067172;%old before fix of wildcard matches: 0.05900217; %This was estimated in the TME modeling project.
+model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.0505717472;%This is the value from ecModels. A fit attempt gave 0.07859261, but it is likely off a bit.
 
 standardRxnProtCost = median(MWDivKcats(~isnan(MWDivKcats)));%1.2894e-04
 
