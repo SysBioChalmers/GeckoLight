@@ -91,6 +91,7 @@ rxnsToAdd = struct();
 rxnsToAdd.rxns = {'prot_pool_exchange'};
 rxnsToAdd.equations = {'=> prot_pool[c]'};
 rxnsToAdd.rxnNames = {'prot_pool_exchange'};
+rxnsToAdd.subSystems = {'GeckoLight Rxns'};
 metsToAdd = struct();
 metsToAdd.mets = {'prot_pool'};
 metsToAdd.metNames = {'prot_pool'};
