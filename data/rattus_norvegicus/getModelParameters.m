@@ -23,10 +23,10 @@ parameters.org_name = 'rattus norvegicus';
 parameters.keggID = 'rno';
 
 %The name of the exchange reaction that supplies the model with carbon (rxnNames)
-parameters.c_source = 'MA-R09034'; 
+parameters.c_source = 'MAR09034'; 
 
 %Rxn Id for biomass pseudoreaction
-parameters.bioRxn = 'MA-R00021';
+parameters.bioRxn = 'MAR00021';
 
 %Experimental carbon source uptake (optional)
 parameters.c_UptakeExp = 1; %[mmol/gDw h]/Average across NCI60 cell lines
