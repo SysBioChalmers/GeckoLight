@@ -26,6 +26,8 @@ end
 %Get model-specific parameters
 parameters = speciesAdapter.getParameters();
 
+oldMetNames = model.metNames;
+
 %Remove blocked rxns + correct model.rev:
 [model,name,modelVer] = preprocessModelLt(model,'ecLight','1');
 
@@ -86,6 +88,11 @@ fprintf('Creating Gecko light model')
 [MWDivKcats,rxnWcLevels] = GetMWAndKcats(uniprots,kcats,wcLevels, swissprot, standardMW);
 fprintf('\n');
 
+%now restore the metabolite names - they were temporarily changed in preprocessModelLt to match the entries in the enzyme databases
+%this messes up some things, for example the names of the metabolites in the biomass function
+model.metNames = oldMetNames;
+
+
 %so, what we do now is to add the reaction prot_pool_exchange and the metabolite prot_pool
 rxnsToAdd = struct();
 rxnsToAdd.rxns = {'prot_pool_exchange'};
@@ -107,7 +114,7 @@ model.S(length(model.mets),:) = -metRow;
 model = addRxns(model, rxnsToAdd, 3);
 
 %set the protein pool constraint
-model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 0.0505717472;%This is the value from ecModels. A fit attempt gave 0.07859261, but it is likely off a bit.
+model.ub(strcmp(model.rxns, 'prot_pool_exchange')) = 2.238315e-02; %the ecModels value was 0.0505717472, but this was fit using a model with the bug in the biomass reaction.
 
 standardRxnProtCost = median(MWDivKcats(~isnan(MWDivKcats)));%1.2894e-04
 
